@@ -1,6 +1,9 @@
 {
   "domain": "yardian_local",
   "name": "Yardian Local",
+  "categories": [
+    "garden_plants"
+  ],
   "codeowners": [
     "@soullink9"
   ],
