@@ -1,0 +1,55 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Yardian (local)",
+        "description": "Connects over your local network only. The access token is shown in the Yardian app.",
+        "data": {
+          "host": "Host / IP address",
+          "access_token": "Access token"
+        },
+        "data_description": {
+          "host": "The controller's IP address on your network. A fixed (reserved) address is best.",
+          "access_token": "From the Yardian app."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot reach the controller",
+      "invalid_auth": "Invalid access token"
+    },
+    "abort": {
+      "already_configured": "This controller is already set up"
+    }
+  },
+  "services": {
+    "start_irrigation": {
+      "name": "Start irrigation",
+      "description": "Run a zone for a set time. The controller stops it on its own.",
+      "fields": {
+        "duration": {
+          "name": "Duration",
+          "description": "Minutes to run."
+        }
+      }
+    },
+    "notify": {
+      "name": "Notify",
+      "description": "Send a notification to each target. Missing or failing targets are skipped, so a notification can never stop watering.",
+      "fields": {
+        "targets": {
+          "name": "Targets",
+          "description": "Notify actions, e.g. notify.mobile_app_pixel_9."
+        },
+        "title": {
+          "name": "Title",
+          "description": "Notification title."
+        },
+        "message": {
+          "name": "Message",
+          "description": "Notification text."
+        }
+      }
+    }
+  }
+}

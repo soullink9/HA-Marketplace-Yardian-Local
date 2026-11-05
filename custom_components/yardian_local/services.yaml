@@ -1,0 +1,33 @@
+# Action definitions shown in Developer tools → Actions. Names and descriptions are in translations/en.json.
+
+start_irrigation:
+  target:
+    entity:
+      integration: yardian_local
+      domain: switch
+  fields:
+    duration:
+      required: true
+      default: 10
+      selector:
+        number:
+          min: 1
+          max: 1440
+          unit_of_measurement: minutes
+
+notify:
+  fields:
+    targets:
+      required: true
+      example: notify.mobile_app_pixel_9
+      selector:
+        text:
+          multiple: true
+    title:
+      selector:
+        text: {}
+    message:
+      required: true
+      selector:
+        text:
+          multiline: true

@@ -1,0 +1,44 @@
+name: Bug report
+description: Something in Yardian Local or the watering blueprint isn't working as it should.
+labels: [bug, yardian_local]
+body:
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Home Assistant (Settings → About), Yardian Local (on the controller's device page) and your controller model.
+      placeholder: Home Assistant 2026.9.4, Yardian Local 1.0.0, Yardian Pro 8-zone
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen
+      description: The steps, if you know them.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part
+      options:
+        - Setup (adding the controller)
+        - Zone switches, run times or the Stop all button
+        - Water usage or the Energy dashboard
+        - The blueprint's schedule or skips
+        - Recovery after Home Assistant or the controller went down
+        - Notifications
+        - Something else
+  - type: textarea
+    id: log
+    attributes:
+      label: Log, diagnostics or trace
+      description: >-
+        Settings → System → Logs, search for yardian_local. For controller data, attach the diagnostics file
+        (Settings → Devices & services → Yardian Local → ⋮ → Download diagnostics). For the schedule, the
+        automation's trace.
+      render: text

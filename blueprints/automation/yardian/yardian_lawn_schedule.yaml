@@ -1,0 +1,795 @@
+# Yardian – fail-safe lawn watering (blueprint for the Yardian Local integration)
+# https://github.com/soullink9/HA-Marketplace-Yardian-Local
+#
+# How it works, for whoever maintains this next:
+#   Triggers   schedule        – fires in the one minute the cycle should start (template; same start
+#                                calculation as the "start_ts" variable below – keep the two identical)
+#              ha_start        – Home Assistant started: clean up, then catch a missed start
+#              controller_back – the controller came back online: catch a missed start
+#              watchdog        – a zone has been on longer than the safety cap: stop everything
+#              reminder        – season start/end reminders (only runs on reminder days, see conditions:)
+#   Decision   1. silent exits: not a watering day, out of season, too early, another run busy,
+#                 or today already handled (last_triggered or the integration's "Last watering" sensor)
+#              2. too late (past the recovery window) → tell the user, stop
+#              3. controller offline → wait for it, at most until the recovery window ends
+#              4. weather and local rules → skip with the reasons
+#              5. run zones one at a time; each start carries a duration, so the controller always
+#                 stops the zone itself even if Home Assistant dies mid-cycle
+#   Notifications go through yardian_local.notify, which skips missing phones instead of failing:
+#   a failing notify action would otherwise stop the automation before any zone ran.
+
+blueprint:
+  name: Yardian – fail-safe lawn watering
+  description: >
+    Runs Yardian Local zones one at a time, either at a fixed time or timed to
+    finish before sunrise. Every zone is started with a duration so the
+    controller stops it on its own even if Home Assistant dies. Includes a late
+    start recovery window, rain / temperature / forecast skips, town watering
+    rules (allowed days, bans, drought level, pickup days), a per-zone
+    safety cap with watchdog, and optional notifications.
+    Never waters twice in a day, even after a crash or power cut, and picks up
+    a missed start when Home Assistant or the controller comes back in time.
+    Set a watering season (e.g. Apr 15 – Oct 15) to stop automatically for
+    winter, or turn this automation off to pause it at any time.
+    Requires the Yardian Local integration from the same repository.
+  domain: automation
+  author: soullink9
+  source_url: https://github.com/soullink9/HA-Marketplace-Yardian-Local/blob/main/blueprints/automation/yardian/yardian_lawn_schedule.yaml
+  homeassistant:
+    min_version: "2026.9.0"
+  input:
+    controller:
+      name: Controller
+      icon: mdi:sprinkler-variant
+      input:
+        zones:
+          name: Zones (in run order)
+          description: Run time per zone comes from each zone's "run time" number (0 = skip).
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - integration: yardian_local
+                  domain: switch
+        stop_button:
+          name: Stop-all button
+          selector:
+            entity:
+              filter:
+                - integration: yardian_local
+                  domain: button
+        max_zone_minutes:
+          name: Max minutes per zone (safety cap)
+          description: >-
+            The schedule never runs a zone longer than this. Any selected zone on
+            for longer than this plus 2 minutes, however it was started, is stopped.
+          default: 35
+          selector:
+            number: {min: 5, max: 120, unit_of_measurement: min, mode: box}
+        zone_delay:
+          name: Pause between zones
+          default: 30
+          selector:
+            number: {min: 0, max: 900, unit_of_measurement: s, mode: box}
+    schedule:
+      name: Schedule
+      icon: mdi:calendar-clock
+      input:
+        schedule_mode:
+          name: Start mode
+          default: sunrise
+          selector:
+            select:
+              options:
+                - {label: "Finish before sunrise (start time is calculated)", value: sunrise}
+                - {label: "Fixed start time", value: fixed}
+        sunrise_offset:
+          name: Finish this long before sunrise
+          description: >-
+            Sunrise mode only. 0 = finish right at sunrise. Sunrise is
+            calculated from your home location in Settings > System > General
+            (accurate to about 2 minutes) – there's no sensor to pick. If the
+            cycle is so long it would have to start before midnight, it starts
+            at midnight.
+          default: 30
+          selector:
+            number: {min: 0, max: 240, unit_of_measurement: min, mode: box}
+        start_time:
+          name: Fixed start time
+          description: Fixed mode only.
+          default: "04:00:00"
+          selector:
+            time: {}
+        days:
+          name: Watering days
+          default: [mon, tue, wed, thu, fri, sat, sun]
+          selector:
+            select:
+              multiple: true
+              options:
+                - {label: Monday, value: mon}
+                - {label: Tuesday, value: tue}
+                - {label: Wednesday, value: wed}
+                - {label: Thursday, value: thu}
+                - {label: Friday, value: fri}
+                - {label: Saturday, value: sat}
+                - {label: Sunday, value: sun}
+        season_start:
+          name: Season starts
+          description: >-
+            First day of the watering season. Only the month and day are used,
+            the year is ignored. Leave Jan 1 – Dec 31 to water all year.
+            A range that crosses New Year (e.g. Oct 1 – Apr 30) also works.
+          default: "2026-01-01"
+          selector:
+            date: {}
+        season_end:
+          name: Season ends
+          description: Last day of the watering season (month and day only).
+          default: "2026-12-31"
+          selector:
+            date: {}
+    recovery:
+      name: Recovery after downtime
+      icon: mdi:restart
+      input:
+        recovery_window:
+          name: Late-start window
+          description: >-
+            If Home Assistant or the controller comes back within this many
+            minutes after the scheduled start and today's cycle hasn't run, it
+            starts then. Later than that, today is skipped (and you're told).
+          default: 60
+          selector:
+            number: {min: 0, max: 240, unit_of_measurement: min, mode: box}
+        stop_on_startup:
+          name: Stop any running zone when Home Assistant starts
+          default: true
+          selector:
+            boolean: {}
+    weather:
+      name: Weather skips (all optional)
+      description: >-
+        Leave any sensor empty to turn that check off. Sensor values are
+        converted automatically, so set the thresholds in the units you pick
+        below no matter what units your sensors report.
+      icon: mdi:weather-pouring
+      collapsed: true
+      input:
+        units:
+          name: Threshold units
+          default: imperial
+          selector:
+            select:
+              options:
+                - {label: "Imperial (inches, °F)", value: imperial}
+                - {label: "Metric (millimetres, °C)", value: metric}
+        rain_total_sensor:
+          name: Rain in the last day
+          description: >-
+            A rain TOTAL covering roughly the past day, e.g. "Daily rain",
+            "24h rain" or "Rain last 24 hours" from a weather station.
+            Do not use event, hourly, weekly, monthly or yearly totals, and do
+            not use a rain rate here. Only precipitation sensors are listed.
+          default: ""
+          selector:
+            entity: {filter: [{domain: sensor, device_class: precipitation}]}
+        rain_total_max:
+          name: Skip if rain in the last day is at least
+          description: "Imperial default 0.25 in. Metric equivalent: about 6 mm."
+          default: 0.25
+          selector:
+            number: {min: 0, max: 100, step: 0.01, mode: box}
+        rain_rate_sensor:
+          name: Rain rate (is it raining now?)
+          description: >-
+            A rain RATE / intensity sensor (in/h or mm/h), e.g. "Rain rate".
+            Checked at the start and again before every zone, so rain that
+            starts mid-cycle ends the cycle. Only precipitation-intensity
+            sensors are listed.
+          default: ""
+          selector:
+            entity: {filter: [{domain: sensor, device_class: precipitation_intensity}]}
+        rain_rate_max:
+          name: Skip if rain rate is above
+          description: 0 = skip on any rain at all.
+          default: 0
+          selector:
+            number: {min: 0, max: 100, step: 0.01, mode: box}
+        temp_sensor:
+          name: Outdoor temperature
+          description: Your outdoor air temperature sensor (not an indoor or soil sensor).
+          default: ""
+          selector:
+            entity: {filter: [{domain: sensor, device_class: temperature}]}
+        min_temp:
+          name: Skip if temperature (now or forecast) is below
+          description: "Imperial default 40 °F. Metric equivalent: about 4 °C."
+          default: 40
+          selector:
+            number: {min: -30, max: 100, step: 0.5, mode: box}
+        weather_entity:
+          name: Forecast
+          description: >-
+            A weather entity that provides an hourly forecast (e.g. Met.no,
+            NWS, OpenWeatherMap). Used for chance of rain, forecast rain and
+            forecast low temperature.
+          default: ""
+          selector:
+            entity: {filter: [{domain: weather}]}
+        forecast_hours:
+          name: Forecast look-ahead
+          default: 12
+          selector:
+            number: {min: 1, max: 48, unit_of_measurement: h, mode: box}
+        forecast_probability:
+          name: Skip if chance of rain is at least
+          default: 60
+          selector:
+            number: {min: 0, max: 100, unit_of_measurement: "%", mode: box}
+        forecast_amount:
+          name: Skip if forecast rain total is at least
+          description: "Imperial default 0.25 in. Metric equivalent: about 6 mm."
+          default: 0.25
+          selector:
+            number: {min: 0, max: 100, step: 0.01, mode: box}
+    local_rules:
+      name: Local watering rules (all optional)
+      description: >-
+        Sensors from your town or water district. Leave any empty to turn that
+        check off. A sensor that is unavailable is ignored rather than
+        blocking watering.
+      icon: mdi:town-hall
+      collapsed: true
+      input:
+        allowed_today_sensor:
+          name: Watering allowed today
+          description: >-
+            A binary sensor that is ON on days you're allowed to water and OFF
+            when you're not (odd/even or day-of-week rules). Watering is skipped
+            when it is OFF. This is the one to use if your town has watering days.
+          default: ""
+          selector:
+            entity: {filter: [{domain: binary_sensor}]}
+        odd_even:
+          name: Odd / even day rule
+          description: >-
+            For towns that only allow watering on odd or even dates. Use this
+            if you don't have a "watering allowed today" sensor. Works together
+            with Watering days: both must allow the day.
+          default: any
+          selector:
+            select:
+              options:
+                - {label: "Any date", value: any}
+                - {label: "Odd dates only (1st, 3rd, 5th…)", value: odd}
+                - {label: "Even dates only (2nd, 4th, 6th…)", value: even}
+        ban_sensor:
+          name: Total watering ban
+          description: >-
+            A binary sensor that is ON only when ALL outdoor watering is banned.
+            Watering is skipped when it is ON. Don't use a "restrictions in
+            effect" sensor here if your town still allows watering on certain
+            days – use "Watering allowed today" for that.
+          default: ""
+          selector:
+            entity: {filter: [{domain: binary_sensor}]}
+        drought_sensor:
+          name: Drought level
+          description: >-
+            A sensor showing a US Drought Monitor level, e.g. "D1 Moderate
+            drought". Only the D0–D4 part is read.
+          default: ""
+          selector:
+            entity: {filter: [{domain: sensor}]}
+        drought_max:
+          name: Skip at or above drought level
+          default: "off"
+          selector:
+            select:
+              options:
+                - {label: "Never skip for drought", value: "off"}
+                - {label: "D0 Abnormally dry", value: "0"}
+                - {label: "D1 Moderate", value: "1"}
+                - {label: "D2 Severe", value: "2"}
+                - {label: "D3 Extreme", value: "3"}
+                - {label: "D4 Exceptional", value: "4"}
+        pickup_sensors:
+          name: Skip on pickup days
+          description: >-
+            Date sensors such as "Next trash pickup" or "Next yard waste
+            pickup". Watering is skipped on the day any of them shows, so bins
+            and crews at the curb don't get sprayed. Only date sensors are listed.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - {domain: sensor, device_class: date}
+                - {domain: sensor, device_class: timestamp}
+    notifications:
+      name: Notifications (optional)
+      icon: mdi:bell-outline
+      collapsed: true
+      input:
+        notify_devices:
+          name: Phones / tablets
+          description: Devices with the Home Assistant Companion app. Pick as many as you like.
+          default: []
+          selector:
+            device:
+              multiple: true
+              filter:
+                - integration: mobile_app
+        notify_extra:
+          name: Other notify actions (optional, advanced)
+          description: >-
+            Only for non-app targets such as notify groups or Telegram, e.g.
+            notify.family. Separate several with commas. Most people leave this empty.
+          default: ""
+          selector:
+            text: {}
+        notify_events:
+          name: Notify on
+          default: [start, finish, skip, fault, season]
+          selector:
+            select:
+              multiple: true
+              options:
+                - {label: Cycle started, value: start}
+                - {label: Cycle finished, value: finish}
+                - {label: "Skipped (rain, freeze, forecast, late recovery)", value: skip}
+                - {label: "Safety stop / fault", value: fault}
+                - {label: "Season start / end reminders", value: season}
+        reminder_days:
+          name: Season reminder lead time
+          description: >-
+            How many days before the season starts and ends to remind you
+            (turn the water on / shut it off and winterize). 0 = on the day.
+            Not sent if the season is Jan 1 – Dec 31.
+          default: 7
+          selector:
+            number: {min: 0, max: 60, unit_of_measurement: days, mode: box}
+        reminder_time:
+          name: Season reminder time
+          default: "10:00:00"
+          selector:
+            time: {}
+
+mode: parallel
+max: 5
+max_exceeded: silent
+
+trigger_variables:
+  zones: !input zones
+  cap: !input max_zone_minutes
+  delay_s: !input zone_delay
+  smode: !input schedule_mode
+  offset: !input sunrise_offset
+  start_time: !input start_time
+
+triggers:
+  # Fires once, in the minute the cycle should start
+  - trigger: template
+    id: schedule
+    value_template: >-
+      {#- Today's start (timestamp). Sunrise from the home location (NOAA formula): the same value all day, DST-proof -#}
+      {%- set ns = namespace(t=0, n=0) -%}
+      {%- for e in zones | select('has_value') -%}
+        {%- set m = [state_attr(e, 'run_minutes') | int(0), cap | int] | min -%}
+        {%- if m > 0 -%}{%- set ns.t = ns.t + m + 1 -%}{%- set ns.n = ns.n + 1 -%}{%- endif -%}
+      {%- endfor -%}
+      {%- set total = ns.t + ([ns.n - 1, 0] | max) * (delay_s | int) / 60 -%}
+      {%- if smode == 'sunrise' -%}
+        {%- set lat = state_attr('zone.home', 'latitude') | float(0) * pi / 180 -%}
+        {%- set y = now().year -%}
+        {%- set g = 2 * pi * ((now().strftime('%j') | int) - 1) / (366 if y % 4 == 0 and (y % 100 != 0 or y % 400 == 0) else 365) -%}
+        {%- set eqt = 229.18 * (0.000075 + 0.001868 * cos(g) - 0.032077 * sin(g) - 0.014615 * cos(2 * g) - 0.040849 * sin(2 * g)) -%}
+        {%- set dec = 0.006918 - 0.399912 * cos(g) + 0.070257 * sin(g) - 0.006758 * cos(2 * g) + 0.000907 * sin(2 * g) - 0.002697 * cos(3 * g) + 0.00148 * sin(3 * g) -%}
+        {%- set x = cos(90.833 * pi / 180) / (cos(lat) * cos(dec)) - tan(lat) * tan(dec) -%}
+        {%- set ha = acos([[x, 1] | min, -1] | max) * 180 / pi -%}
+        {%- set sunrise = as_timestamp(now().strftime('%Y-%m-%dT00:00:00+00:00')) + (720 - 4 * ((state_attr('zone.home', 'longitude') | float(0)) + ha) - eqt) * 60 -%}
+        {%- set st = sunrise - (total + offset | int) * 60 -%}
+      {%- else -%}
+        {%- set st = as_timestamp(today_at(start_time)) -%}
+      {%- endif -%}
+      {%- set st = [st, as_timestamp(today_at())] | max -%}
+      {{ st <= as_timestamp(now()) < st + 60 }}
+  - trigger: homeassistant
+    id: ha_start
+    event: start
+  - trigger: state
+    id: controller_back
+    entity_id: !input stop_button
+    from: unavailable
+  - trigger: state
+    id: watchdog
+    entity_id: !input zones
+    to: "on"
+    for:
+      minutes: "{{ cap | int + 2 }}"
+  - trigger: time
+    id: reminder
+    at: !input reminder_time
+
+variables:
+  zones: !input zones
+  stop_button: !input stop_button
+  cap: !input max_zone_minutes
+  delay_s: !input zone_delay
+  smode: !input schedule_mode
+  offset: !input sunrise_offset
+  start_time: !input start_time
+  days: !input days
+  season_start: !input season_start
+  season_end: !input season_end
+  recovery_window: !input recovery_window
+  stop_on_startup: !input stop_on_startup
+  units: !input units
+  allowed_today: !input allowed_today_sensor
+  odd_even: !input odd_even
+  ban: !input ban_sensor
+  drought: !input drought_sensor
+  drought_max: !input drought_max
+  pickups: !input pickup_sensors
+  rain_total: !input rain_total_sensor
+  rain_total_max: !input rain_total_max
+  rain_rate: !input rain_rate_sensor
+  rain_rate_max: !input rain_rate_max
+  temp: !input temp_sensor
+  min_temp: !input min_temp
+  weather_entity: !input weather_entity
+  forecast_hours: !input forecast_hours
+  forecast_probability: !input forecast_probability
+  forecast_amount: !input forecast_amount
+  notify_devices: !input notify_devices
+  notify_extra: !input notify_extra
+  notify_targets: >-
+    {%- set ns = namespace(t=[]) -%}
+    {%- for d in notify_devices if device_attr(d, 'name') -%}
+      {%- set ns.t = ns.t + ['notify.mobile_app_' ~ device_attr(d, 'name') | slugify] -%}
+    {%- endfor -%}
+    {%- for x in notify_extra.split(',') | map('trim') | reject('eq', '') -%}
+      {%- set ns.t = ns.t + [x if x.startswith('notify.') else 'notify.' ~ x] -%}
+    {%- endfor -%}
+    {{ ns.t }}
+  notify_events: !input notify_events
+  reminder_days: !input reminder_days
+  can_notify: "{{ notify_targets | count > 0 }}"
+  reminder_msg: >-
+    {%- set ns = namespace(m=[]) -%}
+    {%- if trigger.id == 'reminder' -%}
+      {%- set lead = reminder_days | int -%}
+      {%- set a = (season_start | string)[5:10] -%}{%- set b = (season_end | string)[5:10] -%}
+      {%- if not (a == '01-01' and b == '12-31') -%}
+        {%- for y in [now().year, now().year + 1] -%}
+          {%- set st = strptime(y ~ '-' ~ a, '%Y-%m-%d', none) or strptime(y ~ '-' ~ a[:3] ~ '28', '%Y-%m-%d', none) -%}
+          {%- set en = strptime(y ~ '-' ~ b, '%Y-%m-%d', none) or strptime(y ~ '-' ~ b[:3] ~ '28', '%Y-%m-%d', none) -%}
+          {%- if st and (st - timedelta(days=lead)).date() == now().date() -%}
+            {%- set ns.m = ns.m + ['Watering season starts ' ~ ('today' if lead == 0 else st.strftime('%A, %B %-d')) ~ '. Make sure the irrigation water is turned on.'] -%}
+          {%- endif -%}
+          {%- if en and (en - timedelta(days=lead)).date() == now().date() -%}
+            {%- set ns.m = ns.m + ['Watering season ends ' ~ ('today' if lead == 0 else en.strftime('%A, %B %-d')) ~ '. Plan to shut off the water and winterize after that.'] -%}
+          {%- endif -%}
+        {%- endfor -%}
+      {%- endif -%}
+    {%- endif -%}
+    {{ ns.m | join(' ') }}
+
+# The reminder only runs on reminder days, so it never counts as a watering decision
+conditions:
+  - condition: template
+    value_template: "{{ trigger.id != 'reminder' or (reminder_msg | length > 0 and can_notify and 'season' in notify_events) }}"
+
+actions:
+  # ---------- Watchdog: a zone has been on longer than the cap ----------
+  - if: "{{ trigger.id == 'watchdog' }}"
+    then:
+      - action: button.press
+        target: {entity_id: "{{ stop_button }}"}
+        continue_on_error: true
+      - if: "{{ can_notify and 'fault' in notify_events }}"
+        then:
+          - action: yardian_local.notify
+            data:
+              targets: "{{ notify_targets }}"
+              title: "Sprinklers: safety stop"
+              message: "{{ state_attr(trigger.entity_id, 'friendly_name') }} ran longer than {{ cap }} min and was stopped."
+      - stop: Watchdog stop
+
+  # ---------- Season start / end reminder ----------
+  - if: "{{ trigger.id == 'reminder' }}"
+    then:
+      - action: yardian_local.notify
+        data:
+          targets: "{{ notify_targets }}"
+          title: "Sprinklers: season reminder"
+          message: "{{ reminder_msg }}"
+      - stop: Season reminder sent
+
+  # ---------- HA just started: wait for entities, clear any running zone ----------
+  - if: "{{ trigger.id == 'ha_start' }}"
+    then:
+      - wait_template: >-
+          {{ zones | select('has_value') | list | count > 0
+             and ([rain_total, rain_rate, temp, allowed_today, ban, drought] + pickups) | select('ne', '') | reject('has_value') | list | count == 0 }}
+        timeout: "00:05:00"
+      - if: "{{ stop_on_startup and zones | select('is_state', 'on') | list | count > 0 }}"
+        then:
+          - action: button.press
+            target: {entity_id: "{{ stop_button }}"}
+            continue_on_error: true
+          - if: "{{ can_notify and 'fault' in notify_events }}"
+            then:
+              - action: yardian_local.notify
+                data:
+                  targets: "{{ notify_targets }}"
+                  title: "Sprinklers: stopped at startup"
+                  message: "Water was running when Home Assistant started, so it was stopped."
+
+  # ---------- Today's scheduled start, and whether today is already handled ----------
+  - variables:
+      start_ts: >-
+        {#- Today's start (timestamp). Sunrise from the home location (NOAA formula): the same value all day, DST-proof -#}
+        {%- set ns = namespace(t=0, n=0) -%}
+        {%- for e in zones | select('has_value') -%}
+          {%- set m = [state_attr(e, 'run_minutes') | int(0), cap | int] | min -%}
+          {%- if m > 0 -%}{%- set ns.t = ns.t + m + 1 -%}{%- set ns.n = ns.n + 1 -%}{%- endif -%}
+        {%- endfor -%}
+        {%- set total = ns.t + ([ns.n - 1, 0] | max) * (delay_s | int) / 60 -%}
+        {%- if smode == 'sunrise' -%}
+          {%- set lat = state_attr('zone.home', 'latitude') | float(0) * pi / 180 -%}
+          {%- set y = now().year -%}
+          {%- set g = 2 * pi * ((now().strftime('%j') | int) - 1) / (366 if y % 4 == 0 and (y % 100 != 0 or y % 400 == 0) else 365) -%}
+          {%- set eqt = 229.18 * (0.000075 + 0.001868 * cos(g) - 0.032077 * sin(g) - 0.014615 * cos(2 * g) - 0.040849 * sin(2 * g)) -%}
+          {%- set dec = 0.006918 - 0.399912 * cos(g) + 0.070257 * sin(g) - 0.006758 * cos(2 * g) + 0.000907 * sin(2 * g) - 0.002697 * cos(3 * g) + 0.00148 * sin(3 * g) -%}
+          {%- set x = cos(90.833 * pi / 180) / (cos(lat) * cos(dec)) - tan(lat) * tan(dec) -%}
+          {%- set ha = acos([[x, 1] | min, -1] | max) * 180 / pi -%}
+          {%- set sunrise = as_timestamp(now().strftime('%Y-%m-%dT00:00:00+00:00')) + (720 - 4 * ((state_attr('zone.home', 'longitude') | float(0)) + ha) - eqt) * 60 -%}
+          {%- set st = sunrise - (total + offset | int) * 60 -%}
+        {%- else -%}
+          {%- set st = as_timestamp(today_at(start_time)) -%}
+        {%- endif -%}
+        {%- set st = [st, as_timestamp(today_at())] | max -%}
+        {{ st }}
+      start_hm: "{{ (start_ts | float(0)) | timestamp_custom('%H:%M') }}"
+      in_season: >-
+        {%- set md = (start_ts | float(0)) | timestamp_custom('%m-%d') -%}
+        {%- set a = (season_start | string)[5:10] -%}{%- set b = (season_end | string)[5:10] -%}
+        {{ (a <= md <= b) if a <= b else (md >= a or md <= b) }}
+      now_ts: "{{ as_timestamp(now()) }}"
+      last_ts: "{{ as_timestamp(this.attributes.last_triggered, 0) if this.attributes.last_triggered else 0 }}"
+      last_watering: >-
+        {{ device_entities(device_id(stop_button)) | select('search', '^sensor[.]')
+           | select('is_state_attr', 'device_class', 'timestamp') | first | default('') }}
+      lw_ts: "{{ as_timestamp(states(last_watering), 0) if last_watering else 0 }}"
+  # Sunrise mode needs the home location
+  - if: "{{ smode == 'sunrise' and not is_number(state_attr('zone.home', 'latitude')) }}"
+    then:
+      - if: "{{ can_notify and 'fault' in notify_events }}"
+        then:
+          - action: yardian_local.notify
+            data:
+              targets: "{{ notify_targets }}"
+              title: "Sprinklers: can't schedule"
+              message: "Finish-before-sunrise needs your home location (Settings > System > General), or use a fixed start time."
+      - stop: No home location
+  # Silent exits: not a watering day, out of season, before start, another run busy, already watered/decided
+  - condition: template
+    value_template: >-
+      {{ start_ts | float(0) > 0
+         and (start_ts | float | timestamp_custom('%a', true) | lower) in days
+         and in_season
+         and (odd_even == 'any' or ((start_ts | float | timestamp_custom('%d') | int) % 2 == (1 if odd_even == 'odd' else 0)))
+         and now_ts | float >= start_ts | float - 60
+         and this.attributes.current | int(0) == 0
+         and last_ts | float < start_ts | float
+         and lw_ts | float < start_ts | float }}
+  # Too late to recover
+  - if: "{{ now_ts | float > start_ts | float + (recovery_window | int + 5) * 60 }}"
+    then:
+      - if: "{{ can_notify and 'skip' in notify_events }}"
+        then:
+          - action: yardian_local.notify
+            data:
+              targets: "{{ notify_targets }}"
+              title: "Sprinklers: skipped today"
+              message: >-
+                {{ 'Home Assistant' if trigger.id == 'ha_start' else 'The controller' }} came back at
+                {{ now().strftime('%H:%M') }}, past the {{ recovery_window }}-min window after the {{ start_hm }} start.
+      - stop: Past recovery window
+  # Controller offline right now: wait for it, but not past the recovery window
+  - if: "{{ is_state(stop_button, 'unavailable') }}"
+    then:
+      - wait_template: "{{ not is_state(stop_button, 'unavailable') }}"
+        timeout:
+          seconds: "{{ [start_ts | float + (recovery_window | int + 5) * 60 - as_timestamp(now()), 0] | max | int }}"
+      - if: "{{ not wait.completed }}"
+        then:
+          - if: "{{ can_notify and 'skip' in notify_events }}"
+            then:
+              - action: yardian_local.notify
+                data:
+                  targets: "{{ notify_targets }}"
+                  title: "Sprinklers: skipped today"
+                  message: "The controller was offline from the {{ start_hm }} start through the {{ recovery_window }}-min recovery window."
+          - stop: Controller offline
+
+  # ---------- Weather and local rules (values converted to the chosen units) ----------
+  - variables:
+      lu: "{{ 'in' if units == 'imperial' else 'mm' }}"
+      tu: "{{ '°F' if units == 'imperial' else '°C' }}"
+      rt_f: >-
+        {%- set u = (state_attr(rain_total, 'unit_of_measurement') or '') | lower if rain_total else '' -%}
+        {{ (25.4 if u.startswith('in') else 10 if u.startswith('cm') else 1) / (25.4 if units == 'imperial' else 1) }}
+      rr_f: >-
+        {%- set u = (state_attr(rain_rate, 'unit_of_measurement') or '') | lower if rain_rate else '' -%}
+        {{ (25.4 if u.startswith('in') else 10 if u.startswith('cm') else 1) / (25.4 if units == 'imperial' else 1) / (24 if '/d' in u else 1) }}
+      reasons: >-
+        {%- set r = [] -%}
+        {%- if rain_total and states(rain_total) | is_number -%}
+          {%- set v = states(rain_total) | float * rt_f | float -%}
+          {%- if v >= rain_total_max | float -%}{%- set r = r + ['rain in the last day ' ~ v | round(2) ~ ' ' ~ lu] -%}{%- endif -%}
+        {%- endif -%}
+        {%- if rain_rate and states(rain_rate) | is_number -%}
+          {%- set v = states(rain_rate) | float * rr_f | float -%}
+          {%- if v > rain_rate_max | float -%}{%- set r = r + ['raining now (' ~ v | round(2) ~ ' ' ~ lu ~ '/h)'] -%}{%- endif -%}
+        {%- endif -%}
+        {%- if temp and states(temp) | is_number -%}
+          {%- set raw = states(temp) | float -%}
+          {%- set c = (raw - 32) * 5 / 9 if 'f' in (state_attr(temp, 'unit_of_measurement') or '') | lower else raw -%}
+          {%- set v = c * 9 / 5 + 32 if units == 'imperial' else c -%}
+          {%- if v < min_temp | float -%}{%- set r = r + ['temperature ' ~ v | round(1) ~ tu] -%}{%- endif -%}
+        {%- endif -%}
+        {%- if allowed_today and is_state(allowed_today, 'off') -%}
+          {%- set r = r + ['not an allowed watering day (' ~ state_attr(allowed_today, 'friendly_name') ~ ')'] -%}
+        {%- endif -%}
+        {%- if ban and is_state(ban, 'on') -%}
+          {%- set r = r + ['watering ban in effect (' ~ state_attr(ban, 'friendly_name') ~ ')'] -%}
+        {%- endif -%}
+        {%- set lvl = states(drought) | regex_findall('D([0-4])') if drought else [] -%}
+        {%- if drought_max != 'off' and lvl | count > 0 and lvl[0] | int >= drought_max | int -%}
+          {%- set r = r + ['drought level D' ~ lvl[0]] -%}
+        {%- endif -%}
+        {%- set ns = namespace(p=[]) -%}
+        {%- for p in pickups if has_value(p) -%}
+          {%- set v = states(p) -%}
+          {%- set d = (as_local(as_datetime(v)).date() | string) if 'T' in v else v[:10] -%}
+          {%- if d == now().date() | string -%}{%- set ns.p = ns.p + ['pickup day (' ~ state_attr(p, 'friendly_name') ~ ')'] -%}{%- endif -%}
+        {%- endfor -%}
+        {{ r + ns.p }}
+  - if: "{{ weather_entity != '' }}"
+    then:
+      - action: weather.get_forecasts
+        target: {entity_id: "{{ weather_entity }}"}
+        data: {type: hourly}
+        response_variable: fc
+        continue_on_error: true
+      - variables:
+          reasons: >-
+            {%- set f = fc[weather_entity].forecast if fc is defined and fc and weather_entity in fc else [] -%}
+            {%- set pu = (state_attr(weather_entity, 'precipitation_unit') or 'mm') | lower -%}
+            {%- set pf = (25.4 if pu.startswith('in') else 10 if pu.startswith('cm') else 1) / (25.4 if units == 'imperial' else 1) -%}
+            {%- set wf = 'f' in (state_attr(weather_entity, 'temperature_unit') or '') | lower -%}
+            {%- set end = as_timestamp(now()) + (forecast_hours | int) * 3600 -%}
+            {%- set ns = namespace(p=0, a=0, t=none) -%}
+            {%- for x in f if x.datetime is defined and as_timestamp(x.datetime) <= end -%}
+              {%- set ns.p = [ns.p, x.precipitation_probability | default(0, true) | float(0)] | max -%}
+              {%- set ns.a = ns.a + (x.precipitation | default(0, true) | float(0)) * pf -%}
+              {%- if x.temperature is defined and x.temperature is not none -%}
+                {%- set c = (x.temperature | float - 32) * 5 / 9 if wf else x.temperature | float -%}
+                {%- set v = c * 9 / 5 + 32 if units == 'imperial' else c -%}
+                {%- set ns.t = v if ns.t is none else [ns.t, v] | min -%}
+              {%- endif -%}
+            {%- endfor -%}
+            {%- set r = reasons -%}
+            {%- if f | count > 0 and ns.p >= forecast_probability | float -%}{%- set r = r + [ns.p | int ~ '% chance of rain'] -%}{%- endif -%}
+            {%- if f | count > 0 and ns.a >= forecast_amount | float -%}{%- set r = r + ['forecast rain ' ~ ns.a | round(2) ~ ' ' ~ lu] -%}{%- endif -%}
+            {%- if ns.t is not none and ns.t < min_temp | float -%}{%- set r = r + ['forecast low ' ~ ns.t | round(1) ~ tu] -%}{%- endif -%}
+            {{ r }}
+  - if: "{{ reasons | count > 0 }}"
+    then:
+      - if: "{{ can_notify and 'skip' in notify_events }}"
+        then:
+          - action: yardian_local.notify
+            data:
+              targets: "{{ notify_targets }}"
+              title: "Sprinklers: skipped today"
+              message: "Skipped: {{ reasons | join(', ') }}."
+      - stop: Weather skip
+
+  # ---------- Build the run list ----------
+  - variables:
+      run_list: >-
+        {%- set ns = namespace(l=[]) -%}
+        {%- for e in zones | select('has_value') -%}
+          {%- set m = [state_attr(e, 'run_minutes') | int(0), cap | int] | min -%}
+          {%- if m > 0 -%}{%- set ns.l = ns.l + [{'e': e, 'm': m}] -%}{%- endif -%}
+        {%- endfor -%}
+        {{ ns.l }}
+  - if: "{{ run_list | count == 0 }}"
+    then:
+      - if: "{{ can_notify and 'fault' in notify_events }}"
+        then:
+          - action: yardian_local.notify
+            data:
+              targets: "{{ notify_targets }}"
+              title: "Sprinklers: nothing to run"
+              message: "No zone is available with a run time above 0 – is the controller reachable?"
+      - stop: Nothing to run
+  - if: "{{ zones | select('is_state', 'on') | list | count > 0 }}"
+    then:
+      - action: button.press
+        target: {entity_id: "{{ stop_button }}"}
+        continue_on_error: true
+      - delay: {seconds: 5}
+  - if: "{{ can_notify and 'start' in notify_events }}"
+    then:
+      - action: yardian_local.notify
+        data:
+          targets: "{{ notify_targets }}"
+          title: "Sprinklers: started"
+          message: >-
+            {{ 'Late start, ' if trigger.id != 'schedule' else '' }}{{ run_list | count }} zones,
+            {{ run_list | sum(attribute='m') }} min of watering.
+
+  # ---------- Run zones one at a time ----------
+  - repeat:
+      for_each: "{{ run_list }}"
+      sequence:
+        - if: "{{ repeat.index > 1 }}"
+          then:
+            - delay: {seconds: "{{ delay_s | int }}"}
+            - if: "{{ rain_rate != '' and states(rain_rate) | is_number and states(rain_rate) | float * rr_f | float > rain_rate_max | float }}"
+              then:
+                - if: "{{ can_notify and 'skip' in notify_events }}"
+                  then:
+                    - action: yardian_local.notify
+                      data:
+                        targets: "{{ notify_targets }}"
+                        title: "Sprinklers: stopped for rain"
+                        message: "Rain started; ended the cycle after {{ repeat.index - 1 }} of {{ run_list | count }} zones."
+                - stop: Rain mid-cycle
+        - action: yardian_local.start_irrigation
+          target: {entity_id: "{{ repeat.item.e }}"}
+          data: {duration: "{{ repeat.item.m }}"}
+          continue_on_error: true
+        - wait_template: "{{ is_state(repeat.item.e, 'on') }}"
+          timeout: "00:02:00"
+        - if: "{{ not wait.completed }}"
+          then:
+            - action: button.press
+              target: {entity_id: "{{ stop_button }}"}
+              continue_on_error: true
+            - if: "{{ can_notify and 'fault' in notify_events }}"
+              then:
+                - action: yardian_local.notify
+                  data:
+                    targets: "{{ notify_targets }}"
+                    title: "Sprinklers: fault"
+                    message: "{{ state_attr(repeat.item.e, 'friendly_name') }} did not start; cycle aborted. Check the controller."
+            - stop: Zone did not start
+        - wait_template: "{{ is_state(repeat.item.e, 'off') }}"
+          timeout:
+            minutes: "{{ repeat.item.m | int + 2 }}"
+        - if: "{{ not wait.completed }}"
+          then:
+            - action: button.press
+              target: {entity_id: "{{ stop_button }}"}
+              continue_on_error: true
+            - if: "{{ can_notify and 'fault' in notify_events }}"
+              then:
+                - action: yardian_local.notify
+                  data:
+                    targets: "{{ notify_targets }}"
+                    title: "Sprinklers: safety stop"
+                    message: "{{ state_attr(repeat.item.e, 'friendly_name') }} was still on {{ repeat.item.m | int + 2 }} min after starting; stopped and aborted the cycle."
+            - stop: Zone overran
+
+  - if: "{{ can_notify and 'finish' in notify_events }}"
+    then:
+      - action: yardian_local.notify
+        data:
+          targets: "{{ notify_targets }}"
+          title: "Sprinklers: done"
+          message: "Watered {{ run_list | count }} zones ({{ run_list | sum(attribute='m') }} min)."
