@@ -42,3 +42,6 @@ jobs:
           python-version: "3.13"
       - run: pip install -r tests/requirements.txt
       - run: python tests/test_blueprint.py
+      - run: python tests/test_release.py
+      - name: Build yardian_local.zip, and check it installs
+        run: python scripts/build_package.py
