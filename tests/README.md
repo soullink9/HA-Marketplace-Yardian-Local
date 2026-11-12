@@ -12,7 +12,7 @@ python3 tests/test_release.py
 | Script | What it checks |
 |---|---|
 | `test_blueprint.py` | Static checks for the watering blueprint |
-| `test_release.py` | The release scripts in `scripts/`: the version check and notes, building and checking the zip, and publishing to a fake Gitea server |
+| `test_release.py` | The release scripts in `scripts/`: the version check and notes, building and checking the zip, publishing to a fake Gitea server, and working out which releases GitHub still needs |
 
 [CONTRIBUTING.md](../CONTRIBUTING.md#checking-a-change) says which to run for which change, and how long each takes.
 The blueprint check reads the file without running it, and nothing here talks to a controller, so try changes on a
