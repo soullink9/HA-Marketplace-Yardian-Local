@@ -14,7 +14,7 @@ import time
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryError
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -57,7 +57,7 @@ class YardianCoordinator(DataUpdateCoordinator[dict]):
         self.client = client
         self.yid: str = entry.data["yid"]
         self.raw_info = info  # kept for the diagnostics download
-        # Fixed when the entry was first set up (see __init__.py), so stored numbers never change meaning
+        # Fixed when the controller was added (see config_flow.py), so stored numbers never change meaning
         # if the user later switches Home Assistant between metric and US customary.
         self.imperial = entry.data[CONF_UNITS] == "imperial"
 
@@ -120,9 +120,14 @@ class YardianCoordinator(DataUpdateCoordinator[dict]):
             state = await self.client.fetch_device_state()
             oper = await self.client.fetch_oper_info()
         except NotAuthorizedException as err:
-            raise ConfigEntryError("Invalid access token") from err
+            # The token was changed in the Yardian app: Home Assistant asks the user for the new one.
+            raise ConfigEntryAuthFailed(translation_domain=DOMAIN, translation_key="invalid_auth") from err
         except Exception as err:  # noqa: BLE001 - pyyardian raises several types; any of them means "unreachable"
-            raise UpdateFailed(f"Yardian unreachable: {err}") from err
+            raise UpdateFailed(
+                translation_domain=DOMAIN,
+                translation_key="cannot_connect",
+                translation_placeholders={"error": str(err)},
+            ) from err
 
         active = set(state.active_zones)
         was_active = bool(self.data and self.data["active"])

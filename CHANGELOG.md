@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+**Needs Home Assistant 2026.11 or newer.** Only the latest Home Assistant release is supported from now on. On an
+older version the Marketplace keeps offering 1.2.1. Update Home Assistant first, then update the blueprint too
+(re-import it) because it now needs 2026.11 as well.
+
+- **New access token without starting over:** when the controller rejects the token (it was changed in the
+  Yardian app), Home Assistant asks for the new one (**Re-authentication required**). Before, the integration
+  just failed.
+- **Reconfigure:** change the controller's IP address from **⋮ → Reconfigure**. It checks that the address is
+  the same controller. Entities, settings, history and water totals stay.
+- Entity names, icons and error messages now come from the translation files (`translations/en.json`,
+  `icons.json`), as Home Assistant 2026.11 expects. The English names and the entity IDs don't change.
+- Uses Home Assistant 2026.11's setup and unload pattern: setup returns nothing, and a failed unload shows its
+  reason. Commands go to the controller one at a time.
+- Removed code that was only there for older Home Assistant versions. The water unit is now recorded when the
+  controller is added. Controllers that are already set up keep the unit they have.
+
+### Repository
+
+- Every check runs on Python 3.14 only, and ruff targets 3.14.
+- `hacs.json`, the blueprint and the docs require Home Assistant 2026.11.
+
 ## 1.2.1 (2026-11-15)
 
 No changes to the integration.

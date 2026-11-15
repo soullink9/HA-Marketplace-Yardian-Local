@@ -10,13 +10,17 @@ from typing import Any
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 import voluptuous as vol
 
+from .const import DOMAIN
 from .coordinator import YardianConfigEntry, YardianCoordinator
 from .entity import YardianEntity
+
+# Commands go to the controller one at a time; it is a small device.
+PARALLEL_UPDATES = 1
 
 
 async def async_setup_entry(
@@ -36,11 +40,13 @@ async def async_setup_entry(
 class YardianZone(YardianEntity, SwitchEntity):
     """A sprinkler zone. Turning it on runs it for its "run time" (or the duration passed in)."""
 
-    _attr_icon = "mdi:sprinkler-variant"
+    _attr_translation_key = "zone"  # for its icon; the name is the zone's own
 
     def __init__(self, coordinator: YardianCoordinator, zone: int) -> None:
         """Create the switch for 0-based ``zone``, named as in the Yardian app."""
-        super().__init__(coordinator, f"zone_{zone}", str(coordinator.data["zones"][zone][0]), zone)
+        super().__init__(coordinator, f"zone_{zone}", zone)
+        # The zone's name from the Yardian app is the whole entity name, so there is nothing to translate.
+        self._attr_name = self.zone_name(zone)
 
     @property
     def available(self) -> bool:
@@ -61,7 +67,11 @@ class YardianZone(YardianEntity, SwitchEntity):
         """Run the zone for ``duration`` minutes, or for its run time when turned on from the UI."""
         minutes = int(duration or self.coordinator.run_minutes.get(self.zone, 0))
         if minutes < 1:
-            raise HomeAssistantError(f"{self.name}: run time is 0 minutes")
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="no_run_time",
+                translation_placeholders={"zone": str(self.name)},
+            )
         await self._call(self.coordinator.client.start_irrigation(self.zone, minutes), started=True)
 
     async def async_turn_off(self, **kwargs: Any) -> None:

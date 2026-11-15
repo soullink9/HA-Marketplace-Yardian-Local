@@ -30,7 +30,7 @@ A local-only Home Assistant integration for Yardian sprinkler controllers, plus 
 
 ## Install
 
-**Needs:** Home Assistant 2026.9 or newer and a Yardian controller on your network with its access token (shown in the Yardian app).
+**Needs:** Home Assistant 2026.11 or newer and a Yardian controller on your network with its access token (shown in the Yardian app).
 
 1. **Download.** Install **Yardian Local** from the Marketplace (**Settings → Marketplace**, Home Assistant 2026.11 and newer), or copy the [`custom_components/yardian_local`](custom_components/yardian_local) folder into `/config/custom_components/` and restart Home Assistant.
 2. **Add your controller.** Press the first button above, or go to **Settings → Devices & services → Add integration → Yardian Local**, and enter its IP address and access token. If you use Home Assistant's built-in Yardian integration, remove it so the controller isn't polled twice.

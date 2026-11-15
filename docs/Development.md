@@ -7,7 +7,7 @@ and how to release.
 
 ```
 custom_components/yardian_local/
-  __init__.py        connects to one controller, fixes the unit system on first setup, sets up the platforms
+  __init__.py        connects to one controller, sets up the platforms
   const.py           domain, poll interval, water-counting limits, storage key; each value says why
   coordinator.py     polling, the water estimate, saved data (water totals, last watering)
   entity.py          the base entity: device, unique ID, sending commands
@@ -18,8 +18,8 @@ custom_components/yardian_local/
   button.py          Stop all
   services.py        the notify action
   diagnostics.py     the diagnostics download (identifiers removed)
-  config_flow.py     the setup form: host and access token
-  services.yaml, translations/en.json, brand/
+  config_flow.py     the setup form (host and access token, fixes the unit system), re-authentication, Reconfigure
+  services.yaml, translations/en.json (names and messages), icons.json, brand/
 blueprints/automation/yardian/
   yardian_lawn_schedule.yaml   the schedule; its header comment maps the flow
 tests/

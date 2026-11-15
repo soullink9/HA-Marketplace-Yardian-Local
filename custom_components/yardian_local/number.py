@@ -15,6 +15,9 @@ from .const import DEFAULT_RUN_MINUTES
 from .coordinator import YardianConfigEntry, YardianCoordinator
 from .entity import YardianEntity
 
+# These values live in Home Assistant; setting one never talks to the controller.
+PARALLEL_UPDATES = 0
+
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: YardianConfigEntry, async_add_entities: AddConfigEntryEntitiesCallback
@@ -68,7 +71,7 @@ class _Setting(YardianEntity, RestoreNumber):
 class ZoneRunTime(_Setting):
     """Minutes a zone runs (0 = skip it). Used when the zone is switched on and by the blueprint."""
 
-    _attr_icon = "mdi:timer-outline"
+    _attr_translation_key = "zone_run_time"
     _attr_native_max_value = 120
     _attr_native_step = 1
     _attr_native_unit_of_measurement = UnitOfTime.MINUTES
@@ -77,7 +80,7 @@ class ZoneRunTime(_Setting):
 
     def __init__(self, coordinator: YardianCoordinator, zone: int) -> None:
         """Create the run time for 0-based ``zone``."""
-        super().__init__(coordinator, f"zone_{zone}_minutes", f"{coordinator.data['zones'][zone][0]} run time", zone)
+        super().__init__(coordinator, f"zone_{zone}_minutes", zone)
 
 
 class FlowRate(_Setting):
@@ -88,7 +91,6 @@ class FlowRate(_Setting):
     """
 
     _attr_device_class = NumberDeviceClass.VOLUME_FLOW_RATE
-    _attr_icon = "mdi:water-pump"
     _attr_native_max_value = 200
     _attr_native_step = 0.1
     _values_attr = "flow"
@@ -96,9 +98,11 @@ class FlowRate(_Setting):
     def __init__(self, coordinator: YardianCoordinator, zone: int | None) -> None:
         """Create the shared rate (``zone`` None) or one zone's override."""
         if zone is None:
-            super().__init__(coordinator, "flow", "Flow rate")
+            super().__init__(coordinator, "flow")
+            self._attr_translation_key = "flow"
         else:
-            super().__init__(coordinator, f"zone_{zone}_flow", f"{coordinator.data['zones'][zone][0]} flow rate", zone)
+            super().__init__(coordinator, f"zone_{zone}_flow", zone)
+            self._attr_translation_key = "zone_flow"
             self._attr_entity_registry_enabled_default = False
         self._attr_native_unit_of_measurement = (
             UnitOfVolumeFlowRate.GALLONS_PER_MINUTE if coordinator.imperial else UnitOfVolumeFlowRate.LITERS_PER_MINUTE

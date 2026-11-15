@@ -1,11 +1,11 @@
 # Installation
 
-**Needs:** Home Assistant 2026.9 or newer, and a Yardian controller on the same network as Home Assistant, with its
+**Needs:** Home Assistant 2026.11 or newer, and a Yardian controller on the same network as Home Assistant, with its
 **access token** (shown in the Yardian app).
 
 ## From the Marketplace
 
-In Home Assistant 2026.11 and newer, open **Settings → Marketplace**, search for **Yardian Local** and install it, then
+Open **Settings → Marketplace**, search for **Yardian Local** and install it, then
 restart Home Assistant. Updates then show up under **Settings → Updates**.
 
 If it isn't listed yet, add it from its link instead: this repository's address,
@@ -65,6 +65,15 @@ The blueprint is the schedule: it decides when to water, skips for weather and t
 
 To pause watering at any time, turn the automation off. If you also use the Yardian app's own schedule, turn that
 off, or the lawn may be watered by both.
+
+## Changing the address or access token
+
+- **New IP address:** **Settings → Devices & services → Yardian Local → ⋮ → Reconfigure**, and enter the new address.
+  Home Assistant checks that it's the same controller before saving.
+- **New access token:** if the token is changed in the Yardian app, Home Assistant shows **Re-authentication
+  required** under **Settings → Devices & services**. Select it and enter the new token.
+
+Both keep the entities, their settings, history and the water totals.
 
 ## Updating
 

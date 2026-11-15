@@ -12,6 +12,9 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from .coordinator import YardianConfigEntry, YardianCoordinator
 from .entity import YardianEntity
 
+# Every value comes from the coordinator's poll, so there is nothing to limit.
+PARALLEL_UPDATES = 0
+
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: YardianConfigEntry, async_add_entities: AddConfigEntryEntitiesCallback
@@ -20,14 +23,11 @@ async def async_setup_entry(
     coordinator = entry.runtime_data
     async_add_entities(
         [
-            ActiveZone(coordinator, "active_zone", "Active zone"),
-            LastWatering(coordinator, "last_watering", "Last watering"),
-            RainDelay(coordinator, "rain_delay", "Rain delay"),
-            Water(coordinator, "water_total", "Water used"),
-            *(
-                Water(coordinator, f"zone_{zone}_water", f"{coordinator.data['zones'][zone][0]} water used", zone)
-                for zone in range(len(coordinator.data["zones"]))
-            ),
+            ActiveZone(coordinator, "active_zone"),
+            LastWatering(coordinator, "last_watering"),
+            RainDelay(coordinator, "rain_delay"),
+            Water(coordinator, "water_total"),
+            *(Water(coordinator, f"zone_{zone}_water", zone) for zone in range(len(coordinator.data["zones"]))),
         ]
     )
 
@@ -35,7 +35,7 @@ async def async_setup_entry(
 class ActiveZone(YardianEntity, SensorEntity):
     """Name of the zone(s) running now, or "Idle"."""
 
-    _attr_icon = "mdi:sprinkler-variant"
+    _attr_translation_key = "active_zone"
 
     @property
     def native_value(self) -> str:
@@ -52,7 +52,7 @@ class LastWatering(YardianEntity, SensorEntity):
     """
 
     _attr_device_class = SensorDeviceClass.TIMESTAMP
-    _attr_icon = "mdi:history"
+    _attr_translation_key = "last_watering"
     available = True
 
     @property
@@ -67,6 +67,7 @@ class RainDelay(YardianEntity, SensorEntity):
     _attr_device_class = SensorDeviceClass.DURATION
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_native_unit_of_measurement = UnitOfTime.SECONDS
+    _attr_translation_key = "rain_delay"
 
     @property
     def native_value(self) -> int | None:
@@ -84,11 +85,11 @@ class Water(YardianEntity, SensorEntity):
     _attr_device_class = SensorDeviceClass.WATER
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
     _attr_suggested_display_precision = 1
-    _attr_icon = "mdi:water"
 
-    def __init__(self, coordinator: YardianCoordinator, key: str, name: str, zone: int | None = None) -> None:
+    def __init__(self, coordinator: YardianCoordinator, key: str, zone: int | None = None) -> None:
         """Create the total (``zone`` None) or one zone's sensor."""
-        super().__init__(coordinator, key, name, zone)
+        super().__init__(coordinator, key, zone)
+        self._attr_translation_key = "water_total" if zone is None else "zone_water"
         self._attr_native_unit_of_measurement = UnitOfVolume.GALLONS if coordinator.imperial else UnitOfVolume.LITERS
 
     @property

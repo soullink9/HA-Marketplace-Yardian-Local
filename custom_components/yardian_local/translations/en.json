@@ -12,6 +12,26 @@
           "host": "The controller's IP address on your network. A fixed (reserved) address is best.",
           "access_token": "From the Yardian app."
         }
+      },
+      "reauth_confirm": {
+        "title": "Yardian (local): new access token",
+        "description": "{name} no longer accepts its access token. It may have been changed in the Yardian app; enter the current one.",
+        "data": {
+          "access_token": "Access token"
+        },
+        "data_description": {
+          "access_token": "From the Yardian app."
+        }
+      },
+      "reconfigure": {
+        "title": "Yardian (local): change address",
+        "description": "Use this when the controller's IP address changed. Entities, settings and water totals stay as they are.",
+        "data": {
+          "host": "Host / IP address"
+        },
+        "data_description": {
+          "host": "The controller's IP address on your network. A fixed (reserved) address is best."
+        }
       }
     },
     "error": {
@@ -19,7 +39,65 @@
       "invalid_auth": "Invalid access token"
     },
     "abort": {
-      "already_configured": "This controller is already set up"
+      "already_configured": "This controller is already set up",
+      "wrong_device": "That address belongs to a different Yardian controller. Add it as a new controller instead."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "watering": {
+        "name": "Watering"
+      },
+      "standby": {
+        "name": "Standby"
+      }
+    },
+    "button": {
+      "stop_all": {
+        "name": "Stop all"
+      }
+    },
+    "number": {
+      "flow": {
+        "name": "Flow rate"
+      },
+      "zone_run_time": {
+        "name": "{zone_name} run time"
+      },
+      "zone_flow": {
+        "name": "{zone_name} flow rate"
+      }
+    },
+    "sensor": {
+      "active_zone": {
+        "name": "Active zone"
+      },
+      "last_watering": {
+        "name": "Last watering"
+      },
+      "rain_delay": {
+        "name": "Rain delay"
+      },
+      "water_total": {
+        "name": "Water used"
+      },
+      "zone_water": {
+        "name": "{zone_name} water used"
+      }
+    }
+  },
+  "exceptions": {
+    "invalid_auth": {
+      "message": "The controller rejected the access token"
+    },
+    "cannot_connect": {
+      "message": "Cannot reach the Yardian controller: {error}"
+    },
+    "command_failed": {
+      "message": "Yardian command failed: {error}"
+    },
+    "no_run_time": {
+      "message": "{zone}: run time is 0 minutes"
     }
   },
   "services": {

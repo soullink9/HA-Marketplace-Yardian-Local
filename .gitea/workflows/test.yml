@@ -21,7 +21,7 @@ env:
 
 jobs:
   tests:
-    # Home Assistant 2026.9 runs on Python 3.14 and supports nothing older, so that's what the tests run on
+    # Home Assistant runs on Python 3.14 and this integration supports only the latest release, so the tests run on 3.14
     runs-on: ubuntu-latest
     container:
       image: python:3.14-bookworm

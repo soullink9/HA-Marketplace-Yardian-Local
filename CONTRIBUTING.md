@@ -34,7 +34,8 @@ The [Development](docs/Development.md) page has the full file map. The usual pla
 | Setup form | `config_flow.py`, labels in `translations/en.json` |
 | The schedule, skips, recovery and notifications | `blueprints/automation/yardian/yardian_lawn_schedule.yaml` (its header comment maps the flow) |
 
-**Adding an entity:** add the class to the matching platform file with a new, permanent `key`, read its value from
+**Adding an entity:** add the class to the matching platform file with a new, permanent `key` and a
+`_attr_translation_key` (its name goes in `translations/en.json`, its icon in `icons.json`), read its value from
 `coordinator.data` (or a coordinator attribute for Home Assistant-side values), and list it on the
 [Entities and Actions](docs/Entities-and-Actions.md) page.
 
@@ -43,7 +44,7 @@ variable). Change both the same way; `tests/test_blueprint.py` fails if they dif
 
 ## Checking a change
 
-You need Python 3.13 or newer (Home Assistant 2026.9 itself runs on 3.14, which is what the workflows use).
+You need Python 3.14 (what Home Assistant runs on, and what the workflows use).
 
 ```sh
 pip install -r tests/requirements.txt
@@ -108,7 +109,14 @@ exits non-zero if any check fails.
 ### The Marketplace
 
 `hacs.json` at the root is the Marketplace's file: the name it lists and the oldest Home Assistant version the
-integration works with. Keep that version in step with the README's requirements.
+integration works with. Keep that version in step with the README's requirements and the blueprint's `min_version`.
+
+**Only the latest Home Assistant release is supported.** When a new release comes out, raise the minimum in all three
+places and remove anything kept only for older versions; no backwards-compatibility code. Follow the
+[contributors blog](https://contributors.home-assistant.io/blog/) for deprecations.
+
+**Names, icons and messages live in files, not code:** entity names in `translations/en.json` (under `entity`, by the
+entity's `translation_key`), icons in `icons.json`, and error messages under `exceptions` in `en.json`.
 
 ## Commits
 

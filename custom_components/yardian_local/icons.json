@@ -1,0 +1,52 @@
+{
+  "entity": {
+    "binary_sensor": {
+      "watering": {
+        "default": "mdi:sprinkler"
+      }
+    },
+    "button": {
+      "stop_all": {
+        "default": "mdi:water-off"
+      }
+    },
+    "number": {
+      "flow": {
+        "default": "mdi:water-pump"
+      },
+      "zone_flow": {
+        "default": "mdi:water-pump"
+      },
+      "zone_run_time": {
+        "default": "mdi:timer-outline"
+      }
+    },
+    "sensor": {
+      "active_zone": {
+        "default": "mdi:sprinkler-variant"
+      },
+      "last_watering": {
+        "default": "mdi:history"
+      },
+      "water_total": {
+        "default": "mdi:water"
+      },
+      "zone_water": {
+        "default": "mdi:water"
+      }
+    },
+    "switch": {
+      "zone": {
+        "default": "mdi:sprinkler-variant"
+      }
+    }
+  },
+  "services": {
+    "start_irrigation": {
+      "service": "mdi:sprinkler-variant"
+    },
+    "notify": {
+      "service": "mdi:message-alert"
+    }
+  }
+}

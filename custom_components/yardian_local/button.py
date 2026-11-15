@@ -9,12 +9,15 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from .coordinator import YardianConfigEntry
 from .entity import YardianEntity
 
+# Commands go to the controller one at a time; it is a small device.
+PARALLEL_UPDATES = 1
+
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: YardianConfigEntry, async_add_entities: AddConfigEntryEntitiesCallback
 ) -> None:
     """Add the button."""
-    async_add_entities([StopAll(entry.runtime_data, "stop_all", "Stop all")])
+    async_add_entities([StopAll(entry.runtime_data, "stop_all")])
 
 
 class StopAll(YardianEntity, ButtonEntity):
@@ -24,7 +27,7 @@ class StopAll(YardianEntity, ButtonEntity):
     the controller can be reached.
     """
 
-    _attr_icon = "mdi:water-off"
+    _attr_translation_key = "stop_all"
 
     async def async_press(self) -> None:
         """Stop all watering."""
