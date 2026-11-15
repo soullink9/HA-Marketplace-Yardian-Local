@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.2.1 (2026-11-15)
+
+No changes to the integration.
 
 ### Repository
 
