@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.0 (2026-11-15)
 
 **Needs Home Assistant 2026.11 or newer.** Only the latest Home Assistant release is supported from now on. On an
 older version the Marketplace keeps offering 1.2.1. Update Home Assistant first, then update the blueprint too
