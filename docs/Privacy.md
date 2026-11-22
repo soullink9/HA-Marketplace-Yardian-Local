@@ -18,5 +18,6 @@ sends notifications through your own notify actions.
 
 ## Sharing diagnostics and logs
 
-The diagnostics download removes the access token, Yardian ID, serial number and IOTC ID, so it's safe to attach to
-an issue. Logs aren't filtered the same way: check them for anything private before posting.
+The diagnostics download removes the access token, Yardian ID, serial number and IOTC ID, and anything about your
+network or location the controller reports (host name, IP and MAC addresses, Wi-Fi name and password, coordinates),
+so it's safe to attach to an issue. Logs aren't filtered the same way: check them for anything private before posting.

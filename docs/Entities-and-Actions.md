@@ -66,10 +66,12 @@ data:
   message: Done for today.
 ```
 
-A target without a dot is treated as a `notify.` action.
+A target without a dot is treated as a `notify.` action. Only `notify.` actions are ever called: any other target
+(`script.water_now`, say) is skipped and logged as an error, so this action can't be used to run other actions.
 
 ## Diagnostics download
 
 **Settings → Devices & services → Yardian Local → ⋮ → Download diagnostics** gives the controller's raw device
 information, operating information and zone list. The access token, Yardian ID, serial number and IOTC ID are
-removed, so the file is safe to attach to an issue. It's the quickest way to support a new model.
+removed, and so is anything about your network or location (host name, IP and MAC addresses, Wi-Fi name and
+password, coordinates), so the file is safe to attach to an issue. It's the quickest way to support a new model.

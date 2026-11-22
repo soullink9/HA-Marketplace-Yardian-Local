@@ -6,6 +6,8 @@ restart. The controller never sees them; the coordinator and the blueprint read 
 
 from __future__ import annotations
 
+import math
+
 from homeassistant.components.number import NumberDeviceClass, NumberMode, RestoreNumber
 from homeassistant.const import EntityCategory, UnitOfTime, UnitOfVolumeFlowRate
 from homeassistant.core import HomeAssistant
@@ -51,11 +53,22 @@ class _Setting(YardianEntity, RestoreNumber):
         return getattr(self.coordinator, self._values_attr)
 
     async def async_added_to_hass(self) -> None:
-        """Restore the value saved before the last restart (or use the default the first time)."""
+        """Restore the value saved before the last restart (or use the default the first time, or if it's invalid)."""
         await super().async_added_to_hass()
         last = await self.async_get_last_number_data()
-        self._values[self.zone] = last.native_value if last and last.native_value is not None else self._default
+        self._values[self.zone] = self._restorable(last.native_value if last else None)
         self.coordinator.async_update_listeners()  # e.g. the zone switch shows the restored run time
+
+    def _restorable(self, value: float | None) -> float:
+        """Return ``value`` if it's a finite number within this setting's range, else the default.
+
+        Restored state comes from a file on disk; a damaged one must not give a zone a run time of NaN or
+        10,000 minutes.
+        """
+        is_number = isinstance(value, int | float) and math.isfinite(value)
+        if is_number and self.native_min_value <= value <= self.native_max_value:
+            return value
+        return self._default
 
     @property
     def native_value(self) -> float | None:

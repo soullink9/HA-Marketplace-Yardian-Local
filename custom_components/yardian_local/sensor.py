@@ -71,8 +71,11 @@ class RainDelay(YardianEntity, SensorEntity):
 
     @property
     def native_value(self) -> int | None:
-        """Raw value from the controller."""
-        return self.coordinator.data["oper"].get("iRainDelay")
+        """Raw value from the controller, or unknown if it isn't a whole, non-negative number of seconds."""
+        value = self.coordinator.data["oper"].get("iRainDelay")
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            return value
+        return None
 
 
 class Water(YardianEntity, SensorEntity):

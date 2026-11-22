@@ -26,6 +26,8 @@ tests/
   README.md            what each test checks
   test_blueprint.py    static checks for the blueprint
   test_release.py      the release scripts, publishing against a fake Gitea
+  test_integration.py  the integration's code against a fake controller (notify, bad data, diagnostics)
+  stubs.py             stand-ins for Home Assistant and pyyardian that test_integration.py runs on
   requirements.txt     what the checks need: PyYAML and Jinja2
 scripts/             the release helpers both release workflows use (see Tests and releases below)
 .gitea/workflows/    tests and releases on Gitea, the main copy (no GitHub needed)
@@ -37,6 +39,10 @@ docs/    these pages
 
 - `YardianCoordinator` polls the controller every 15 seconds (`fetch_device_state`, `fetch_oper_info`). Its `data` is
   the zone list, the set of running zones (0-based) and the operating info. Every entity reads from it.
+- Every answer from the controller is checked before it's used (`clean_zones`, `clean_active` in
+  `coordinator.py`): a zone list that isn't a list fails the poll, a malformed zone becomes a disabled placeholder,
+  and running zones that aren't real zone numbers are ignored. Saved data is checked the same way when it loads
+  (`clean_water`, `clean_last_start`), and restored number settings must be finite and within their range.
 - The coordinator also holds what lives in Home Assistant: `run_minutes` and `flow` (filled in by the number entities
   from their restored state), `water` and `last_start` (saved in `.storage/`).
 - **Water:** each poll credits the zones that were running at the previous poll with the time since then (capped at
@@ -67,13 +73,15 @@ pip install -r tests/requirements.txt
 ruff check && ruff format --check
 python3 tests/test_blueprint.py
 python3 tests/test_release.py
+python3 tests/test_integration.py
 python3 scripts/build_package.py
 ```
 
 `test_blueprint.py` catches the easy mistakes in a long hand-edited blueprint: an input defined but never used (or
 the reverse), the two start-time calculations drifting apart, a template that doesn't parse, and an action the
-blueprint isn't meant to call. There are no automated tests against a controller yet, so try changes on a real controller
-before releasing. `test_release.py` checks the release scripts, and `build_package.py` builds the zip, checks it
+blueprint isn't meant to call. `test_integration.py` runs the integration's code against a fake controller and
+stand-ins for Home Assistant: the notify action's target check, malformed controller answers, damaged saved data and
+the diagnostics redaction. Nothing runs against a real controller, so try changes on one before releasing. `test_release.py` checks the release scripts, and `build_package.py` builds the zip, checks it
 installs and copies the blueprint next to it. Gitea's runner runs all of these on every push; GitHub runs them too,
 plus Home Assistant's `hassfest` and the Marketplace's checks.
 
@@ -94,3 +102,4 @@ Gitea is the main copy of this repository; it push-mirrors to GitHub, the public
 | `scripts/publish_gitea_release.py` | Creates or updates the Gitea release and uploads its files, through Gitea's API (standard library only) |
 | `scripts/plan_github_releases.py` | Used by the GitHub release workflow: lists the version tags GitHub has no published release for yet, oldest first, and which one becomes "Latest" (standard library only) |
 | `tests/test_release.py` | Tests all five scripts, publishing against a fake Gitea server |
+| `tests/test_integration.py` | Runs on every push and before every release, like the other tests |

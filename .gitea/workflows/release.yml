@@ -59,7 +59,8 @@ jobs:
       - name: Tests
         run: |
           python3 tests/test_blueprint.py &&
-            python3 tests/test_release.py
+            python3 tests/test_release.py &&
+            python3 tests/test_integration.py
 
       - name: Build yardian_local.zip, and check it installs as custom_components/yardian_local/
         run: python3 scripts/build_package.py

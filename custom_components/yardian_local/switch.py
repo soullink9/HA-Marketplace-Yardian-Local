@@ -50,8 +50,12 @@ class YardianZone(YardianEntity, SwitchEntity):
 
     @property
     def available(self) -> bool:
-        """Unavailable while the controller is unreachable, or if the zone is disabled in the Yardian app."""
-        return super().available and self.coordinator.data["zones"][self.zone][1] == 1
+        """Unavailable while the controller is unreachable, or if the zone is disabled in the Yardian app.
+
+        Also unavailable if the controller stops listing the zone: switches are created once, at setup.
+        """
+        zones = self.coordinator.data["zones"]
+        return super().available and self.zone < len(zones) and zones[self.zone][1] == 1
 
     @property
     def is_on(self) -> bool:

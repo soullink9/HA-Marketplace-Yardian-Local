@@ -96,6 +96,9 @@
     "command_failed": {
       "message": "Yardian command failed: {error}"
     },
+    "bad_response": {
+      "message": "The Yardian controller sent a zone list Home Assistant can't read"
+    },
     "no_run_time": {
       "message": "{zone}: run time is 0 minutes"
     }
@@ -117,7 +120,7 @@
       "fields": {
         "targets": {
           "name": "Targets",
-          "description": "Notify actions, e.g. notify.mobile_app_pixel_9."
+          "description": "Notify actions, e.g. notify.mobile_app_pixel_9. Targets outside the notify domain are skipped."
         },
         "title": {
           "name": "Title",

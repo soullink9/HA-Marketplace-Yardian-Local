@@ -53,6 +53,7 @@ pip install -r tests/requirements.txt
 | Command | Time | When |
 |---|---|---|
 | `ruff check custom_components tests` and `ruff format custom_components tests` | seconds | every change |
+| `python3 tests/test_integration.py` | seconds | any change to `custom_components/` |
 | `python3 tests/test_blueprint.py` | seconds | any blueprint change |
 | `python3 tests/test_release.py` | seconds | any change to `scripts/` or the release workflows |
 | `python3 scripts/build_package.py` | seconds | before a release: builds `dist/yardian_local.zip`, checks it installs, and copies the blueprint next to it |
@@ -61,8 +62,8 @@ pip install -r tests/requirements.txt
 Gitea's runner runs ruff, the blueprint check, the release tests and the zip build on every push
 (`.gitea/workflows/test.yml`). On GitHub the same checks run plus Home Assistant's `hassfest` and the Marketplace's
 own checks, which come from GitHub and can only run there. [tests/README.md](tests/README.md) lists what each test
-checks. There are no automated tests against a real or simulated controller yet; a pull request adding them is
-welcome.
+checks. `test_integration.py` runs the integration's code against a fake controller and stand-ins for Home
+Assistant (`tests/stubs.py`); there are no tests against a real controller or a real Home Assistant yet.
 
 Code style: `ruff` settles formatting and import order (see `pyproject.toml`). Every module, class and function has a
 docstring, and comments say why, not what.
@@ -162,6 +163,10 @@ installs from GitHub's releases, so every link in the docs and release notes poi
    byte), title and notes, so GitHub's releases match Gitea's. The Marketplace picks it up from GitHub. If GitHub is
    down, the mirror catches up later; the Gitea release is already done. Don't make releases or tags on GitHub
    itself: the mirror deletes tags Gitea doesn't have, and GitHub follows Gitea on its own.
+
+The GitHub workflows pin every action to a commit, with its version in a comment: a tag or branch moved upstream
+can't change what runs. To update an action, change the commit and the comment together in every workflow. Only
+the job that publishes a GitHub release may write to the repository; everything else is read only.
 
 The Gitea workflows use no actions (`actions/checkout` and the like download from GitHub): each job runs in a plain
 image from Docker Hub (`python:3.14-bookworm`) and fetches the code from Gitea with git, so testing and releasing
