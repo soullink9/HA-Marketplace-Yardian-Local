@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.3.1 (2026-11-22)
+
+Hardening from a security review. Nothing to change in your setup.
+
+- **`yardian_local.notify` only sends notifications.** It now calls only `notify.` actions: any other target
+  (`script.…`, `shell_command.…`) is skipped and logged as an error, so it can't be used to run other actions. Notify
+  targets keep working as before, with or without the `notify.` prefix, and a bad target still never stops watering.
+- **Odd answers from the controller no longer break entities.** A zone that's malformed or no longer reported shows
+  as unavailable instead of raising an error, running zones that aren't real zones are ignored (and get no water
+  counted), and a rain delay that isn't a whole number of seconds shows as unknown.
+- **Damaged saved data is ignored.** Water totals that aren't a finite, non-negative number, an unreadable (or future) last
+  watering time, and restored run times or flow rates outside their range are dropped (and logged) instead of
+  showing NaN or breaking setup. A run time or flow rate that is dropped goes back to its default.
+- **Diagnostics remove network details** too: host name, IP and MAC addresses, Wi-Fi name and password, and
+  coordinates, whatever the controller calls the field.
+
+### Repository
+
+- GitHub workflows pin every action (checkout, setup-python, hassfest, the HACS action) to a commit. The GitHub
+  release workflow is read only except for the job that publishes, and no checkout leaves its token behind.
+- New `tests/test_integration.py` runs the integration's code against a fake controller, on every push and before
+  every release.
+
 ## 1.3.0 (2026-11-15)
 
 **Needs Home Assistant 2026.11 or newer.** Only the latest Home Assistant release is supported from now on. On an
