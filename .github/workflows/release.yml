@@ -19,8 +19,9 @@ on:
     tags: ["v*.*.*", "V*.*.*"]
   workflow_dispatch:
 
+# Read only by default; only the job that publishes gets write access (see release: below).
 permissions:
-  contents: write # to publish releases
+  contents: read
 
 # One run at a time: a mirror push that moves main and brings a tag starts this twice, and the second run then
 # finds the release already published instead of racing the first to create it.
@@ -34,8 +35,9 @@ jobs:
     outputs:
       releases: ${{ steps.plan.outputs.releases }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
+          persist-credentials: false # no token left in .git/config for later steps
           fetch-depth: 0 # every tag, to compare with GitHub's releases
 
       - name: Find the version tags GitHub has no release for
@@ -51,18 +53,21 @@ jobs:
     if: needs.plan.outputs.releases != '[]'
     name: Release ${{ matrix.tag }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # to publish releases
     strategy:
       max-parallel: 1 # one at a time, oldest version first
       fail-fast: false # a version that fails its checks doesn't hold up the others
       matrix:
         include: ${{ fromJSON(needs.plan.outputs.releases) }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
+          persist-credentials: false # no token left in .git/config for later steps
           ref: ${{ matrix.tag }} # the release is built from its tag, as on Gitea
 
       # Home Assistant runs on Python 3.14 and this integration supports only the latest release, so the tests run on 3.14
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.14"
 
@@ -82,6 +87,7 @@ jobs:
         run: |
           python3 tests/test_blueprint.py
           python3 tests/test_release.py
+          python3 tests/test_integration.py
 
       # The asset keeps the same name in every release: .../releases/latest/download/yardian_local.zip relies on it.
       - name: Build yardian_local.zip, and check it installs as custom_components/yardian_local/
