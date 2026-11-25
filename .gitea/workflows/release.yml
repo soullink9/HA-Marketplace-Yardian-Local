@@ -35,7 +35,7 @@ jobs:
     # Home Assistant runs on Python 3.14 and this integration supports only the latest release, so the tests run on 3.14
     runs-on: ubuntu-latest
     container:
-      image: python:3.14-bookworm
+      image: python:3.14-trixie
     steps:
       - name: Get the code
         env:
@@ -69,7 +69,7 @@ jobs:
     needs: tests
     runs-on: ubuntu-latest
     container:
-      image: python:3.14-bookworm
+      image: python:3.14-trixie
     steps:
       - name: Get the code
         env:

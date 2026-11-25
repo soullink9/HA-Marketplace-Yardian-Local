@@ -169,7 +169,7 @@ can't change what runs. To update an action, change the commit and the comment t
 the job that publishes a GitHub release may write to the repository; everything else is read only.
 
 The Gitea workflows use no actions (`actions/checkout` and the like download from GitHub): each job runs in a plain
-image from Docker Hub (`python:3.14-bookworm`) and fetches the code from Gitea with git, so testing and releasing
+image from Docker Hub (`python:3.14-trixie`) and fetches the code from Gitea with git, so testing and releasing
 keep working when GitHub can't be reached. Only the checks' packages (`tests/requirements.txt`) come from PyPI. When
 the runner's jobs can't reach Gitea at its public address (a runner on the same Docker network as Gitea, say), set
 an Actions variable `GITEA_INTERNAL_URL` to the address they can reach (`http://gitea-server:3000`); both workflows
