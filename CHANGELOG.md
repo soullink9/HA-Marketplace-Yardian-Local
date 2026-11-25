@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3.2 (2026-11-25)
+
+Dependency check. Nothing changes in the integration or the blueprint, and nothing to change in your setup.
+
+- **pyyardian stays at 1.4.2 or newer.** That's the latest release, and the version Home Assistant 2026.11 ships.
+
+### Repository
+
+- GitHub workflows use `actions/checkout` v7.0.1 and `actions/setup-python` v7.1.0 (from v5.1.0 and v6.3.0), and
+  the latest hassfest action. All are still pinned to a commit.
+- Gitea workflows run in `python:3.14-trixie` (Debian 13, the current stable) instead of `python:3.14-bookworm`.
+
 ## 1.3.1 (2026-11-22)
 
 Hardening from a security review. Nothing to change in your setup.
